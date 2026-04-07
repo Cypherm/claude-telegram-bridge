@@ -4,10 +4,10 @@
   "description": "Talk to Claude Code from your phone via Telegram. One file, zero deps.",
   "type": "module",
   "bin": {
-    "claude-telegram-bridge": "./bridge.mjs"
+    "claude-telegram-bridge": "./bridge.js"
   },
   "scripts": {
-    "start": "node bridge.mjs"
+    "start": "node bridge.js"
   },
   "engines": {
     "node": ">=18.0.0"

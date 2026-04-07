@@ -58,13 +58,13 @@ cp .env.example .env
 4. Run:
 
 ```bash
-node bridge.mjs
+node bridge.js
 ```
 
 Or with env vars inline:
 
 ```bash
-TELEGRAM_BOT_TOKEN=xxx ALLOWED_TELEGRAM_IDS=123456 node bridge.mjs
+TELEGRAM_BOT_TOKEN=xxx ALLOWED_TELEGRAM_IDS=123456 node bridge.js
 ```
 
 ## Configuration
@@ -95,14 +95,14 @@ Always use TypeScript for code examples.
 ### pm2
 
 ```bash
-pm2 start bridge.mjs --name claude-tg
+pm2 start bridge.js --name claude-tg
 pm2 save
 ```
 
 ### tmux
 
 ```bash
-tmux new-session -d -s claude-tg 'node bridge.mjs'
+tmux new-session -d -s claude-tg 'node bridge.js'
 ```
 
 ### systemd
@@ -112,7 +112,7 @@ tmux new-session -d -s claude-tg 'node bridge.mjs'
 Description=claude-telegram-bridge
 
 [Service]
-ExecStart=/usr/bin/node /path/to/bridge.mjs
+ExecStart=/usr/bin/node /path/to/bridge.js
 WorkingDirectory=/path/to/your/project
 EnvironmentFile=/path/to/.env
 Restart=always
