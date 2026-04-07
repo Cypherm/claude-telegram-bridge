@@ -90,20 +90,85 @@ You are a helpful coding assistant. Respond concisely.
 Always use TypeScript for code examples.
 ```
 
-## Migrating Skills from OpenClaw
+## Migrating from OpenClaw
 
-If you're coming from OpenClaw, your existing skills work with Claude Code — the formats are compatible.
+After Anthropic's April 2026 subscription ban on third-party tools, many OpenClaw users need a new way to run Claude via Telegram. This bridge uses `claude -p` (the official CLI), so it runs on your existing Claude subscription — no API key, no extra cost.
+
+### Step 1: Skills
+
+OpenClaw `SKILL.md` and Claude Code `skill.md` are format-compatible. Just copy and rename:
 
 ```bash
-# Copy an OpenClaw skill to Claude Code
-mkdir -p ~/.claude/skills/my-skill
-cp ~/.openclaw/workspace/skills/my-skill/SKILL.md ~/.claude/skills/my-skill/skill.md
-
-# If the skill has data or references, symlink them
-ln -s ~/.openclaw/workspace/skills/my-skill/data ~/.claude/skills/my-skill/data
+# Migrate all skills at once
+for skill in ~/.openclaw/workspace*/skills/*/; do
+  name=$(basename "$skill")
+  dest="$HOME/.claude/skills/$name"
+  [ -d "$dest" ] && continue
+  mkdir -p "$dest"
+  cp "$skill/SKILL.md" "$dest/skill.md" 2>/dev/null
+  # Symlink data and references if they exist
+  [ -d "$skill/data" ] && ln -s "$skill/data" "$dest/data"
+  [ -d "$skill/references" ] && ln -s "$skill/references" "$dest/references"
+  [ -d "$skill/scripts" ] && ln -s "$skill/scripts" "$dest/scripts"
+  echo "✓ $name"
+done
 ```
 
-The only difference: OpenClaw uses `SKILL.md`, Claude Code uses `skill.md`. The frontmatter and content are the same. Skills are automatically available in the bridge via `claude -p`.
+Skills are automatically available via `claude -p`. No code changes needed.
+
+### Step 2: Agent persona
+
+Your OpenClaw agent config (BOOTSTRAP.md, SOUL.md, AGENTS.md, etc.) maps to a single `CLAUDE.md` file in your `WORK_DIR`. Put your agent's personality, rules, and instructions there. Claude Code reads it on every session start.
+
+### Step 3: Memory
+
+If your OpenClaw agent has memory files (MEMORY.md, conversation logs), copy them to your `WORK_DIR`. Reference them in your `CLAUDE.md`:
+
+```markdown
+## Memory
+- Read `MEMORY.md` on session start to restore context
+- Important insights go to `memory/YYYY-MM-DD.md`
+```
+
+### Step 4: Bot token
+
+You can reuse your existing Telegram bot token. **Important:** stop the OpenClaw gateway first, or the two will fight over `getUpdates` (409 conflict).
+
+```bash
+# Stop OpenClaw gateway if running
+launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null
+
+# Kill any lingering OpenClaw Telegram consumers
+pkill -f "bun server.ts" 2>/dev/null
+```
+
+If you keep getting 409 errors, revoke and regenerate your bot token via @BotFather.
+
+### Step 5: Cron jobs
+
+OpenClaw cron jobs (RSS scans, scheduled digests) can be replicated with system cron or Claude Code's `/schedule` command. Example for a daily RSS scan:
+
+```bash
+# System cron (crontab -e)
+0 8 * * * cd /path/to/workdir && claude -p "run intel-digest skill" 2>&1 >> /tmp/intel.log
+```
+
+### Step 6: MCP servers
+
+Any MCP servers configured in `~/.claude/settings.json` are automatically available in the bridge. No migration needed — `claude -p` loads them natively.
+
+### What you keep
+
+| OpenClaw | This bridge | Notes |
+|---|---|---|
+| Skills (SKILL.md) | ✅ Copy to `~/.claude/skills/` | Rename to `skill.md` |
+| Agent persona | ✅ CLAUDE.md in WORK_DIR | Consolidate into one file |
+| Memory/context | ✅ Files in WORK_DIR | Referenced via CLAUDE.md |
+| Bot token | ✅ Same token | Stop OpenClaw first |
+| MCP servers | ✅ Already works | Via Claude Code settings |
+| Cron jobs | ⚠️ Needs reimplementation | System cron or `/schedule` |
+| Telegram channels (multi-bot) | ⚠️ One bot per bridge | Run multiple bridge instances |
+| OAuth subscription auth | ✅ Via `claude -p` | No API key needed |
 
 ## Running as a Service
 
