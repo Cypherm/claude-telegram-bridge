@@ -65,12 +65,32 @@ async function sendTyping(chatId) {
   await tg("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
 }
 
+function mdToHtml(text) {
+  // Escape HTML entities first
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return html
+    // Code blocks (protect from other replacements)
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/__(.+?)__/g, '<b>$1</b>')
+    // Italic: *text* or _text_
+    .replace(/(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)/g, '<i>$1</i>')
+    .replace(/(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)/g, '<i>$1</i>')
+    // Strikethrough: ~~text~~
+    .replace(/~~(.+?)~~/g, '<s>$1</s>');
+}
+
 async function sendMessage(chatId, text, replyTo) {
   const chunks = splitText(text, MAX_MSG_LEN);
   for (const chunk of chunks) {
     const base = { chat_id: chatId, text: chunk, ...(replyTo ? { reply_to_message_id: replyTo } : {}) };
-    // Try Markdown first, fall back to plain text if Telegram rejects the formatting
-    const res = await tg("sendMessage", { ...base, parse_mode: "Markdown" });
+    // Convert markdown to Telegram HTML, fall back to plain text on parse error
+    const res = await tg("sendMessage", { ...base, text: mdToHtml(chunk), parse_mode: "HTML" });
     if (!res.ok) await tg("sendMessage", base);
   }
 }
