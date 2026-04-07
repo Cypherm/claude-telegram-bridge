@@ -90,6 +90,21 @@ You are a helpful coding assistant. Respond concisely.
 Always use TypeScript for code examples.
 ```
 
+## Migrating Skills from OpenClaw
+
+If you're coming from OpenClaw, your existing skills work with Claude Code — the formats are compatible.
+
+```bash
+# Copy an OpenClaw skill to Claude Code
+mkdir -p ~/.claude/skills/my-skill
+cp ~/.openclaw/workspace/skills/my-skill/SKILL.md ~/.claude/skills/my-skill/skill.md
+
+# If the skill has data or references, symlink them
+ln -s ~/.openclaw/workspace/skills/my-skill/data ~/.claude/skills/my-skill/data
+```
+
+The only difference: OpenClaw uses `SKILL.md`, Claude Code uses `skill.md`. The frontmatter and content are the same. Skills are automatically available in the bridge via `claude -p`.
+
 ## Running as a Service
 
 ### pm2
