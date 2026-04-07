@@ -1,8 +1,12 @@
-# claude-telegram-bridge
+# claude-tg-bridge
 
 Talk to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) from your phone via Telegram.
 
-One file, zero dependencies. Bridges Telegram Bot API to `claude -p` (pipe mode).
+```bash
+npx claude-tg-bridge --token YOUR_BOT_TOKEN --allow YOUR_USER_ID
+```
+
+One file, zero dependencies. Bridges Telegram Bot API to `claude -p` (pipe mode). Works with your existing Claude subscription — no API key needed.
 
 ## Why
 
@@ -49,8 +53,8 @@ Telegram message
 3. Clone and configure:
 
 ```bash
-git clone https://github.com/cypherm/claude-telegram-bridge
-cd claude-telegram-bridge
+git clone https://github.com/cypherm/claude-tg-bridge
+cd claude-tg-bridge
 cp .env.example .env
 # Edit .env with your token and user ID
 ```
@@ -189,7 +193,7 @@ tmux new-session -d -s claude-tg 'node bridge.js'
 
 ```ini
 [Unit]
-Description=claude-telegram-bridge
+Description=claude-tg-bridge
 
 [Service]
 ExecStart=/usr/bin/node /path/to/bridge.js

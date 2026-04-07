@@ -24,13 +24,45 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
+// ── CLI args ────────────────────────────────────────────────────────────
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const parsed = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") parsed.help = true;
+    else if (args[i] === "--token" && args[i + 1]) parsed.token = args[++i];
+    else if (args[i] === "--allow" && args[i + 1]) parsed.allow = args[++i];
+    else if (args[i] === "--dir" && args[i + 1]) parsed.dir = args[++i];
+    else if (args[i] === "--compact" && args[i + 1]) parsed.compact = args[++i];
+  }
+  return parsed;
+}
+
+const cli = parseArgs();
+
+if (cli.help) {
+  console.log(`claude-tg-bridge — Talk to Claude Code via Telegram
+
+Usage:
+  npx claude-tg-bridge --token BOT_TOKEN --allow USER_ID
+  TELEGRAM_BOT_TOKEN=xxx node bridge.js
+
+Options:
+  --token TOKEN    Telegram bot token (or set TELEGRAM_BOT_TOKEN)
+  --allow IDS      Comma-separated Telegram user IDs (or set ALLOWED_TELEGRAM_IDS)
+  --dir PATH       Working directory for Claude Code (default: cwd)
+  --compact N      Turns before auto-compaction (default: 100)
+  -h, --help       Show this help`);
+  process.exit(0);
+}
+
 // ── Config ──────────────────────────────────────────────────────────────
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ALLOWED_IDS = process.env.ALLOWED_TELEGRAM_IDS
-  ? new Set(process.env.ALLOWED_TELEGRAM_IDS.split(",").map(Number))
-  : new Set();
-const WORK_DIR = resolve(process.env.WORK_DIR || process.cwd());
-const COMPACT_INTERVAL = parseInt(process.env.COMPACT_INTERVAL || "100", 10);
+const BOT_TOKEN = cli.token || process.env.TELEGRAM_BOT_TOKEN;
+const ALLOWED_IDS = (cli.allow || process.env.ALLOWED_TELEGRAM_IDS || "")
+  .split(",").map(Number).filter(Boolean);
+const ALLOWED_SET = new Set(ALLOWED_IDS);
+const WORK_DIR = resolve(cli.dir || process.env.WORK_DIR || process.cwd());
+const COMPACT_INTERVAL = parseInt(cli.compact || process.env.COMPACT_INTERVAL || "100", 10);
 const CLAUDE_TIMEOUT = parseInt(process.env.CLAUDE_TIMEOUT || "300000", 10);
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL || "2000", 10);
 const COMPACT_PROMPT = process.env.COMPACT_PROMPT
@@ -41,13 +73,14 @@ const MAX_MSG_LEN = 4096;
 const SUMMARY_FILE = resolve(WORK_DIR, "session-summary.md");
 
 if (!BOT_TOKEN) {
-  console.error("Error: TELEGRAM_BOT_TOKEN is required.");
-  console.error("  Get one from @BotFather on Telegram.");
-  console.error("  Usage: TELEGRAM_BOT_TOKEN=xxx node bridge.mjs");
+  console.error("Error: Bot token is required.\n");
+  console.error("  npx claude-tg-bridge --token YOUR_BOT_TOKEN --allow YOUR_USER_ID");
+  console.error("  or: TELEGRAM_BOT_TOKEN=xxx node bridge.js\n");
+  console.error("  Get a token from @BotFather on Telegram.");
   process.exit(1);
 }
 
-if (ALLOWED_IDS.size === 0) {
+if (ALLOWED_SET.size === 0) {
   console.warn("[warn] ALLOWED_TELEGRAM_IDS is empty — anyone can use this bot.");
 }
 
@@ -284,7 +317,7 @@ async function poll() {
         const chatId = msg?.chat?.id;
         if (!chatId) continue;
 
-        if (ALLOWED_IDS.size > 0 && !ALLOWED_IDS.has(userId)) {
+        if (ALLOWED_SET.size > 0 && !ALLOWED_SET.has(userId)) {
           console.log(`[denied] user ${userId} (${msg.from.username})`);
           continue;
         }
@@ -346,7 +379,7 @@ async function poll() {
 console.log("=== claude-telegram-bridge ===");
 console.log(`dir: ${WORK_DIR}`);
 console.log(`compact: every ${COMPACT_INTERVAL} turns`);
-if (ALLOWED_IDS.size > 0) console.log(`allowed: ${[...ALLOWED_IDS].join(", ")}`);
+if (ALLOWED_SET.size > 0) console.log(`allowed: ${[...ALLOWED_SET].join(", ")}`);
 
 const me = await tg("getMe");
 if (me.ok) {

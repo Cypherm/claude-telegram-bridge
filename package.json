@@ -1,10 +1,10 @@
 {
-  "name": "claude-telegram-bridge",
-  "version": "0.0.1",
+  "name": "claude-tg-bridge",
+  "version": "0.1.0",
   "description": "Talk to Claude Code from your phone via Telegram. One file, zero deps.",
   "type": "module",
   "bin": {
-    "claude-telegram-bridge": "./bridge.js"
+    "claude-tg-bridge": "./bridge.js"
   },
   "scripts": {
     "start": "node bridge.js"
