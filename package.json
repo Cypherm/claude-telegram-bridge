@@ -1,0 +1,28 @@
+{
+  "name": "claude-telegram-bridge",
+  "version": "0.0.1",
+  "description": "Talk to Claude Code from your phone via Telegram. One file, zero deps.",
+  "type": "module",
+  "bin": {
+    "claude-telegram-bridge": "./bridge.mjs"
+  },
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cypherm/claude-telegram-bridge"
+  },
+  "keywords": [
+    "telegram",
+    "claude",
+    "claude-code",
+    "bridge",
+    "chatbot",
+    "cli"
+  ]
+}
