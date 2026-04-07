@@ -19,6 +19,7 @@ It also solves real pain points with running Claude Code as a long-lived bot:
 - **Photo support** — Send images to Claude Code. Photos are downloaded, passed to Claude (which can read images natively), and cleaned up on session rotation.
 - **Reply context** — Reply to any message and the quoted text is included, so Claude knows what you're referring to.
 - **Markdown rendering** — Responses render bold, italic, and code formatting in Telegram, with automatic plain-text fallback for unsupported syntax.
+- **Voice messages** — Voice notes are transcribed locally via whisper-cpp (no API key needed) and sent to Claude as text.
 - **Sticker support** — Send stickers and Claude receives the underlying emoji.
 - **Emoji reactions** — Claude can react to your messages with emoji (e.g., `[react: 💎]` in its output becomes a reaction on your message). Add instructions in your `CLAUDE.md` to tell Claude when to use reactions.
 - **Telegram message limits** — Responses longer than 4096 characters are automatically split at newline boundaries.
@@ -44,6 +45,7 @@ Telegram message
 
 - **Node.js 18+** (for native `fetch`)
 - **Claude Code CLI** installed and authenticated — `claude` must be in your PATH
+- **ffmpeg** and **whisper-cpp** (optional, for voice message transcription): `brew install ffmpeg whisper-cpp`
 - **Telegram bot token** from [@BotFather](https://t.me/botfather)
 
 ## Setup
@@ -82,6 +84,7 @@ TELEGRAM_BOT_TOKEN=xxx ALLOWED_TELEGRAM_IDS=123456 node bridge.js
 | `CLAUDE_TIMEOUT` | No | `300000` | `claude -p` timeout in ms (5 min) |
 | `POLL_INTERVAL` | No | `2000` | Telegram polling interval in ms |
 | `COMPACT_PROMPT` | No | *(English summary)* | Custom prompt for session compaction |
+| `WHISPER_MODEL` | No | `ggml-base.bin` | Whisper model file name or absolute path. Use `ggml-medium.bin` for better Chinese/multilingual support |
 
 ## Customizing Claude's Behavior
 

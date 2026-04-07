@@ -19,7 +19,7 @@
  * - 409 conflict backoff for clean restarts
  */
 
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -335,6 +335,48 @@ async function poll() {
           const emoji = msg.sticker.emoji || "?";
           text = text || `[Sticker: ${emoji}]`;
         }
+
+        // Voice/audio: download and transcribe with whisper-cli
+        if (msg.voice || msg.audio) {
+          try {
+            const fileId = (msg.voice || msg.audio).file_id;
+            const fileInfo = await tg("getFile", { file_id: fileId });
+            if (fileInfo.ok) {
+              const url = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.result.file_path}`;
+              const audioRes = await fetch(url);
+              const buf = Buffer.from(await audioRes.arrayBuffer());
+              const oggPath = resolve(WORK_DIR, `.telegram-voice-${Date.now()}.ogg`);
+              const wavPath = oggPath.replace(".ogg", ".wav");
+              writeFileSync(oggPath, buf);
+              execSync(`ffmpeg -y -i "${oggPath}" -ar 16000 -ac 1 "${wavPath}" 2>/dev/null`);
+              const txtPath = wavPath.replace(".wav", "");
+              const whisperModel = process.env.WHISPER_MODEL || "ggml-base.bin";
+              const modelPath = whisperModel.startsWith("/") ? whisperModel : `/opt/homebrew/share/whisper-cpp/${whisperModel}`;
+              execSync(`whisper-cli -m "${modelPath}" -otxt -of "${txtPath}" -np -nt "${wavPath}" 2>/dev/null`);
+              const transcript = readFileSync(txtPath + ".txt", "utf-8").trim();
+              for (const f of [oggPath, wavPath, txtPath + ".txt"]) {
+                try { (await import("node:fs/promises")).unlink(f); } catch {}
+              }
+              if (transcript) {
+                text = text ? `${text}\n\n[Voice transcript: ${transcript}]` : transcript;
+                console.log(`[voice] transcribed: ${transcript.slice(0, 80)}`);
+              }
+            }
+          } catch (err) {
+            console.error("[voice] transcription failed:", err.message);
+          }
+          if (!text) {
+            await sendMessage(chatId, "Voice transcription failed. Please try again or send text.");
+            continue;
+          }
+        }
+
+        // Video: not yet supported
+        if ((msg.video || msg.video_note) && !text) {
+          await sendMessage(chatId, "Video is not yet supported. Please send text or voice.");
+          continue;
+        }
+
         const quoted = msg.reply_to_message?.text;
         if (quoted) {
           text = `[Quoted message: "${quoted}"]\n\n${text}`;
