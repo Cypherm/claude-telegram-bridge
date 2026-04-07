@@ -15,6 +15,8 @@ It also solves real pain points with running Claude Code as a long-lived bot:
 - **Photo support** — Send images to Claude Code. Photos are downloaded, passed to Claude (which can read images natively), and cleaned up on session rotation.
 - **Reply context** — Reply to any message and the quoted text is included, so Claude knows what you're referring to.
 - **Markdown rendering** — Responses render bold, italic, and code formatting in Telegram, with automatic plain-text fallback for unsupported syntax.
+- **Sticker support** — Send stickers and Claude receives the underlying emoji.
+- **Emoji reactions** — Claude can react to your messages with emoji (e.g., `[react: 💎]` in its output becomes a reaction on your message). Add instructions in your `CLAUDE.md` to tell Claude when to use reactions.
 - **Telegram message limits** — Responses longer than 4096 characters are automatically split at newline boundaries.
 
 ## How It Works

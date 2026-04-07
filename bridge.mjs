@@ -65,6 +65,14 @@ async function sendTyping(chatId) {
   await tg("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
 }
 
+async function setReaction(chatId, messageId, emoji) {
+  await tg("setMessageReaction", {
+    chat_id: chatId,
+    message_id: messageId,
+    reaction: [{ type: "emoji", emoji }],
+  }).catch(() => {});
+}
+
 function mdToHtml(text) {
   // Escape HTML entities first
   let html = text
@@ -217,11 +225,25 @@ async function processQueue() {
       const typing = setInterval(() => sendTyping(chatId), 4000);
       await sendTyping(chatId);
 
-      const result = await runClaude(text);
+      let result = await runClaude(text);
       clearInterval(typing);
 
-      await sendMessage(chatId, result, messageId);
-      console.log(`[reply] ${result.slice(0, 80)}...`);
+      // Extract reactions: [react: 💎] or [react: 🔥]
+      const reactions = [];
+      result = result.replace(/\[react:\s*(.+?)\]/g, (_, emoji) => {
+        reactions.push(emoji.trim());
+        return "";
+      }).trim();
+
+      for (const emoji of reactions) {
+        await setReaction(chatId, messageId, emoji);
+        console.log(`[react] ${emoji}`);
+      }
+
+      if (result) {
+        await sendMessage(chatId, result, messageId);
+      }
+      console.log(`[reply] ${reactions.length ? `[${reactions.join("")}] ` : ""}${(result || "(reaction only)").slice(0, 80)}...`);
     } catch (err) {
       console.error("[error]", err.message);
       await sendMessage(chatId, `Error: ${err.message.slice(0, 200)}`, messageId);
@@ -272,8 +294,14 @@ async function poll() {
           continue;
         }
 
-        // Build message text from text and/or photo caption
+        // Build message text from text, photo, or sticker
         let text = msg.text || msg.caption || "";
+
+        // Sticker: pass the emoji to Claude
+        if (msg.sticker) {
+          const emoji = msg.sticker.emoji || "?";
+          text = text || `[Sticker: ${emoji}]`;
+        }
         const quoted = msg.reply_to_message?.text;
         if (quoted) {
           text = `[Quoted message: "${quoted}"]\n\n${text}`;
