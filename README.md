@@ -12,6 +12,9 @@ It also solves real pain points with running Claude Code as a long-lived bot:
 
 - **Context accumulation** — Long sessions eventually hit context limits and crash (`exit 143`). The bridge auto-rotates sessions every N turns and carries a summary forward, so context is never silently lost.
 - **Session lock conflicts** — Claude Code's `--session-id` locks the session file. If a process is killed uncleanly, the next message fails. The bridge serializes all messages and auto-retries with a fresh session on error.
+- **Photo support** — Send images to Claude Code. Photos are downloaded, passed to Claude (which can read images natively), and cleaned up on session rotation.
+- **Reply context** — Reply to any message and the quoted text is included, so Claude knows what you're referring to.
+- **Markdown rendering** — Responses render bold, italic, and code formatting in Telegram, with automatic plain-text fallback for unsupported syntax.
 - **Telegram message limits** — Responses longer than 4096 characters are automatically split at newline boundaries.
 
 ## How It Works

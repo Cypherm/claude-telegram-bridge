@@ -12,6 +12,9 @@
  * - Auto-compaction: every N turns, Claude summarizes context for the next session
  * - Serial message queue prevents session lock conflicts
  * - Auto-retry with fresh session on any error
+ * - Markdown rendering with plain-text fallback
+ * - Photo support (downloads, sends to Claude, cleans up on session rotation)
+ * - Reply quote context (includes quoted message text)
  * - Splits long replies for Telegram's 4096 char limit
  * - 409 conflict backoff for clean restarts
  */
@@ -65,11 +68,10 @@ async function sendTyping(chatId) {
 async function sendMessage(chatId, text, replyTo) {
   const chunks = splitText(text, MAX_MSG_LEN);
   for (const chunk of chunks) {
-    await tg("sendMessage", {
-      chat_id: chatId,
-      text: chunk,
-      ...(replyTo ? { reply_to_message_id: replyTo } : {}),
-    });
+    const base = { chat_id: chatId, text: chunk, ...(replyTo ? { reply_to_message_id: replyTo } : {}) };
+    // Try Markdown first, fall back to plain text if Telegram rejects the formatting
+    const res = await tg("sendMessage", { ...base, parse_mode: "Markdown" });
+    if (!res.ok) await tg("sendMessage", base);
   }
 }
 
@@ -92,6 +94,7 @@ function splitText(text, limit) {
 // only one claude process runs at a time — no lock conflicts.
 let currentSessionId = randomUUID();
 let turnCount = 0;
+let sessionPhotos = [];
 
 function spawnClaude(args) {
   return new Promise((resolve, reject) => {
@@ -127,6 +130,11 @@ async function compactAndRotate() {
   } catch (err) {
     console.error(`[compact] failed (non-fatal): ${err.message}`);
   }
+  // Clean up photos from this session
+  for (const p of sessionPhotos) {
+    try { (await import("node:fs/promises")).unlink(p); } catch {}
+  }
+  sessionPhotos = [];
   currentSessionId = randomUUID();
   turnCount = 0;
   console.log(`[session] rotated → ${currentSessionId.slice(0, 8)}...`);
@@ -176,15 +184,15 @@ async function runClaude(prompt) {
 const queue = [];
 let processing = false;
 
-function enqueue(chatId, messageId, text, user) {
-  queue.push({ chatId, messageId, text, user });
+function enqueue(chatId, messageId, text, user, photoPath) {
+  queue.push({ chatId, messageId, text, user, photoPath });
   if (!processing) processQueue();
 }
 
 async function processQueue() {
   processing = true;
   while (queue.length > 0) {
-    const { chatId, messageId, text, user } = queue.shift();
+    const { chatId, messageId, text, user, photoPath } = queue.shift();
     try {
       const typing = setInterval(() => sendTyping(chatId), 4000);
       await sendTyping(chatId);
@@ -198,6 +206,8 @@ async function processQueue() {
       console.error("[error]", err.message);
       await sendMessage(chatId, `Error: ${err.message.slice(0, 200)}`, messageId);
     }
+    // Track photo for cleanup on session rotation
+    if (photoPath) sessionPhotos.push(photoPath);
     if (queue.length > 0) await new Promise(r => setTimeout(r, 1000));
   }
   processing = false;
@@ -227,10 +237,10 @@ async function poll() {
       for (const update of data.result) {
         offset = update.update_id + 1;
         const msg = update.message;
-        if (!msg?.text) continue;
 
-        const userId = msg.from.id;
-        const chatId = msg.chat.id;
+        const userId = msg?.from?.id;
+        const chatId = msg?.chat?.id;
+        if (!chatId) continue;
 
         if (ALLOWED_IDS.size > 0 && !ALLOWED_IDS.has(userId)) {
           console.log(`[denied] user ${userId} (${msg.from.username})`);
@@ -242,8 +252,38 @@ async function poll() {
           continue;
         }
 
-        console.log(`[msg] ${msg.from.username}: ${msg.text.slice(0, 80)}`);
-        enqueue(chatId, msg.message_id, msg.text, msg.from.username);
+        // Build message text from text and/or photo caption
+        let text = msg.text || msg.caption || "";
+        const quoted = msg.reply_to_message?.text;
+        if (quoted) {
+          text = `[Quoted message: "${quoted}"]\n\n${text}`;
+        }
+
+        // Download photo if present
+        let photoPath = null;
+        if (msg.photo?.length > 0) {
+          try {
+            const fileId = msg.photo[msg.photo.length - 1].file_id; // largest size
+            const fileInfo = await tg("getFile", { file_id: fileId });
+            if (fileInfo.ok) {
+              const url = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.result.file_path}`;
+              const imgRes = await fetch(url);
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              photoPath = resolve(WORK_DIR, `.telegram-photo-${Date.now()}.jpg`);
+              writeFileSync(photoPath, buf);
+              text = text
+                ? `${text}\n\n[Attached photo: ${photoPath}]`
+                : `[Attached photo: ${photoPath}] Please look at this image and respond.`;
+            }
+          } catch (err) {
+            console.error("[photo] download failed:", err.message);
+          }
+        }
+
+        if (!text) continue;
+
+        console.log(`[msg] ${msg.from.username}: ${text.slice(0, 80)}`);
+        enqueue(chatId, msg.message_id, text, msg.from.username, photoPath);
       }
     }
   } catch (err) {
