@@ -352,7 +352,7 @@ async function poll() {
               const txtPath = wavPath.replace(".wav", "");
               const whisperModel = process.env.WHISPER_MODEL || "ggml-base.bin";
               const modelPath = whisperModel.startsWith("/") ? whisperModel : `/opt/homebrew/share/whisper-cpp/${whisperModel}`;
-              execSync(`whisper-cli -m "${modelPath}" -otxt -of "${txtPath}" -np -nt "${wavPath}" 2>/dev/null`);
+              execSync(`whisper-cli -m "${modelPath}" -l auto -otxt -of "${txtPath}" -np -nt "${wavPath}" 2>/dev/null`);
               const transcript = readFileSync(txtPath + ".txt", "utf-8").trim();
               for (const f of [oggPath, wavPath, txtPath + ".txt"]) {
                 try { (await import("node:fs/promises")).unlink(f); } catch {}
