@@ -1,6 +1,6 @@
 {
   "name": "claude-tg-bridge",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Talk to Claude Code from your phone via Telegram. One file, zero deps.",
   "type": "module",
   "bin": {
