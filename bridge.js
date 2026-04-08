@@ -279,7 +279,19 @@ async function processQueue() {
       console.log(`[reply] ${reactions.length ? `[${reactions.join("")}] ` : ""}${(result || "(reaction only)").slice(0, 80)}...`);
     } catch (err) {
       console.error("[error]", err.message);
-      await sendMessage(chatId, `Error: ${err.message.slice(0, 200)}`, messageId);
+      const msg = err.message || "";
+      const isTimeout = msg.includes("exit 143") || msg.includes("SIGTERM") || msg.includes("timed out");
+      const isPermission = msg.includes("permission") || msg.includes("Permission") || msg.includes("not allowed");
+      if (isPermission || isTimeout) {
+        await sendMessage(chatId,
+          "⚠️ Claude may be stuck on a permission prompt.\n\n" +
+          "Since `claude -p` runs non-interactively, permission requests cannot be approved via Telegram.\n\n" +
+          "**Fix:** Add the required tools to `~/.claude/settings.json`:\n" +
+          '```\n{ "permissions": { "allow": ["Read","Write","Edit","Bash","Glob","Grep"] } }\n```\n' +
+          "Then restart the bridge.", messageId);
+      } else {
+        await sendMessage(chatId, `Error: ${msg.slice(0, 200)}`, messageId);
+      }
     }
     // Track photo for cleanup on session rotation
     if (photoPath) sessionPhotos.push(photoPath);
