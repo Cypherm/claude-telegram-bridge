@@ -20,7 +20,7 @@
  */
 
 import { spawn, execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -156,6 +156,7 @@ function splitText(text, limit) {
 let currentSessionId = randomUUID();
 let turnCount = 0;
 let sessionPhotos = [];
+let conversationLog = [];
 
 function spawnClaude(args) {
   return new Promise((resolve, reject) => {
@@ -180,14 +181,27 @@ function spawnClaude(args) {
 async function compactAndRotate() {
   try {
     console.log(`[compact] summarizing session ${currentSessionId.slice(0, 8)} (${turnCount} turns)...`);
-    const summary = await spawnClaude([
-      "-p",
-      "--resume", currentSessionId,
-      "--",
-      COMPACT_PROMPT,
-    ]);
-    writeFileSync(SUMMARY_FILE, `# Previous session summary\n\n${summary}\n`);
-    console.log(`[compact] saved (${summary.length} chars)`);
+    const transcript = conversationLog.map(m =>
+      m.role === 'user' ? `User: ${m.text}` : `Assistant: ${m.text}`
+    ).join('\n\n');
+
+    if (!transcript) {
+      console.log('[compact] no conversation to summarize');
+    } else {
+      // Fresh session (no --resume) to avoid persona interference with summarization
+      let summary = await spawnClaude([
+        "-p",
+        "--",
+        COMPACT_PROMPT + "\n\n---\n\n" + transcript,
+      ]);
+      summary = summary.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+      if (summary.length < 50) {
+        console.warn(`[compact] summary too short (${summary.length} chars), skipping.`);
+      } else {
+        writeFileSync(SUMMARY_FILE, `# Previous session summary\n\n${summary}\n`);
+      }
+      console.log(`[compact] saved (${summary.length} chars)`);
+    }
   } catch (err) {
     console.error(`[compact] failed (non-fatal): ${err.message}`);
   }
@@ -196,6 +210,7 @@ async function compactAndRotate() {
     try { (await import("node:fs/promises")).unlink(p); } catch {}
   }
   sessionPhotos = [];
+  conversationLog = [];
   currentSessionId = randomUUID();
   turnCount = 0;
   console.log(`[session] rotated → ${currentSessionId.slice(0, 8)}...`);
@@ -222,7 +237,14 @@ async function runClaude(prompt) {
 
   try {
     console.log(`[claude] session=${currentSessionId.slice(0, 8)} turn=${turnCount}: ${prompt.slice(0, 80)}...`);
-    const result = await spawnClaude(["-p", ...sessionArg, "--", fullPrompt]);
+    let result = await spawnClaude(["-p", ...sessionArg, "--", fullPrompt]);
+    if (!result) {
+      console.log("[claude] empty response, retrying same session...");
+      result = await spawnClaude([
+        "-p", "--resume", currentSessionId, "--",
+        "[system: your previous response was empty — please reply to the user's last message]",
+      ]);
+    }
     return result || "(no output)";
   } catch (err) {
     console.error(`[claude] error: ${err.message.slice(0, 200)}`);
@@ -259,6 +281,8 @@ async function processQueue() {
       await sendTyping(chatId);
 
       let result = await runClaude(text);
+      conversationLog.push({ role: "user", text: text.slice(0, 500) });
+      conversationLog.push({ role: "assistant", text: (result || "").slice(0, 500) });
       clearInterval(typing);
 
       // Extract reactions: [react: 💎] or [react: 🔥]
@@ -302,6 +326,8 @@ async function processQueue() {
 
 // ── Polling ─────────────────────────────────────────────────────────────
 let offset = 0;
+let lastPollError = null;
+let pollErrorCount = 0;
 
 async function poll() {
   try {
@@ -312,12 +338,22 @@ async function poll() {
     });
 
     if (!data.ok) {
-      if (data.error_code === 409) {
-        console.error("[poll] 409 conflict — another bot instance may be running. Backing off 10s...");
-        await new Promise(r => setTimeout(r, 10000));
+      const errKey = `${data.error_code}`;
+      if (errKey === lastPollError) {
+        pollErrorCount++;
       } else {
+        if (pollErrorCount > 1) console.error(`[poll] ${lastPollError} x${pollErrorCount} suppressed`);
+        lastPollError = errKey;
+        pollErrorCount = 1;
         console.error(`[poll] error: ${data.error_code} ${data.description}`);
       }
+      if (data.error_code === 409) {
+        await new Promise(r => setTimeout(r, 10000));
+      }
+    } else if (pollErrorCount > 0) {
+      if (pollErrorCount > 1) console.log(`[poll] recovered (${lastPollError} x${pollErrorCount} total)`);
+      lastPollError = null;
+      pollErrorCount = 0;
     }
 
     if (data.ok && data.result?.length > 0) {
@@ -428,6 +464,34 @@ async function poll() {
 
   setTimeout(poll, POLL_INTERVAL);
 }
+
+// ── Graceful shutdown ───────────────────────────────────────────────────
+let shuttingDown = false;
+const SHUTDOWN_LOG = resolve(WORK_DIR, "shutdown.log");
+function shutdownLog(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { appendFileSync(SHUTDOWN_LOG, line); } catch {}
+  console.log(msg);
+}
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  shutdownLog(`[shutdown] ${signal} received (session=${currentSessionId.slice(0, 8)}, turns=${turnCount})`);
+  if (turnCount > 0) {
+    try {
+      await compactAndRotate();
+      shutdownLog("[shutdown] session summary saved.");
+    } catch (err) {
+      shutdownLog(`[shutdown] failed to save summary: ${err.message}`);
+    }
+  } else {
+    shutdownLog("[shutdown] no turns in current session, nothing to save.");
+  }
+  process.exit(0);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGHUP", () => gracefulShutdown("SIGHUP"));
 
 // ── Start ───────────────────────────────────────────────────────────────
 console.log("=== claude-telegram-bridge ===");
